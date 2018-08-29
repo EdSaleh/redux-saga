@@ -22,7 +22,7 @@ import { getLocation, addSagaStack, sagaStackToString } from './error-utils'
 import { asap, suspend, flush } from './scheduler'
 import { channel, isEnd } from './channel'
 import matcher from './matcher'
-
+const DONT_INTERPRET_EFFECT = Symbol('DONT_INTERPRET_EFFECT')
 export function getMetaInfo(fn) {
   return {
     name: fn.name || 'anonymous',
@@ -134,7 +134,8 @@ function createTaskIterator({ context, fn, args }) {
     : makeIterator(
         (function() {
           let pc
-          const eff = { done: false, value: result }
+          const effectValue = result && result[IO] ? { [DONT_INTERPRET_EFFECT]: result } : result
+          const eff = { done: false, value: effectValue }
           const ret = value => ({ done: true, value })
           return arg => {
             if (!pc) {
@@ -334,6 +335,8 @@ export default function proc(env, iterator, parentContext, parentEffectId, meta,
       resolvePromise(effect, currCb)
     } else if (is.iterator(effect)) {
       resolveIterator(effect, effectId, meta, currCb)
+    } else if (effect && effect[DONT_INTERPRET_EFFECT]) {
+      currCb(effect[DONT_INTERPRET_EFFECT])
     } else if (effect && effect[IO]) {
       const { type, payload } = effect
       if (type === effectTypes.TAKE) runTakeEffect(payload, currCb)
